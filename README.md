@@ -3,7 +3,7 @@
 - Auto farming
 - Auto mission
 - Support multi account
-- Register OKX Racer [here](https://t.me/NomisAppBot/app?startapp=ref_Lndkhu-VNo)
+- Register Nomis [here](https://t.me/NomisAppBot/app?startapp=ref_Lndkhu-VNo)
 
 ### Installation
 

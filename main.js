@@ -158,7 +158,7 @@ class Nomis {
         }
 
         const [, telegram_user_id, telegram_username] = userMatch;
-        const referrer = "FTnENEBJKR"; // refcode
+        const referrer = "Lndkhu-VNo";
 
         try {
           const authResponse = await this.auth(

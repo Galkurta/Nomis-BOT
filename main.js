@@ -4,6 +4,36 @@ const axios = require("axios");
 const { DateTime } = require("luxon");
 const colors = require("colors");
 const readline = require("readline");
+const winston = require("winston");
+
+// Configure Winston logger with improved formatting
+const logger = winston.createLogger({
+  level: "info",
+  format: winston.format.combine(
+    winston.format.timestamp({
+      format: "YYYY-MM-DD HH:mm:ss.SSS",
+    }),
+    winston.format.printf(({ timestamp, level, message }) => {
+      const levelUpper = level.toUpperCase().padEnd(5);
+      let coloredLevel;
+      switch (level) {
+        case "info":
+          coloredLevel = colors.green(levelUpper);
+          break;
+        case "warn":
+          coloredLevel = colors.yellow(levelUpper);
+          break;
+        case "error":
+          coloredLevel = colors.red(levelUpper);
+          break;
+        default:
+          coloredLevel = colors.white(levelUpper);
+      }
+      return `${colors.gray(timestamp)} ${coloredLevel}: ${message}`;
+    })
+  ),
+  transports: [new winston.transports.Console()],
+});
 
 class Nomis {
   constructor() {
@@ -12,14 +42,13 @@ class Nomis {
 
   headers() {
     return {
+      "Content-Type": "application/json",
       Accept: "application/json, text/plain, */*",
-      "Accept-Encoding": "gzip, deflate, br",
-      "Accept-Language": "en-US,en;q=0.9",
+      "Accept-Language":
+        "vi-VN,vi;q=0.9,fr-FR;q=0.8,fr;q=0.7,en-US;q=0.6,en;q=0.5",
       Authorization:
         "Bearer 8e25d2673c5025dfcd36556e7ae1b330095f681165fe964181b13430ddeb385a0844815b104eff05f44920b07c073c41ff19b7d95e487a34aa9f109cab754303cd994286af4bd9f6fbb945204d2509d4420e3486a363f61685c279ae5b77562856d3eb947e5da44459089b403eb5c80ea6d544c5aa99d4221b7ae61b5b4cbb55",
-      "Content-Type": "application/json",
       Origin: "https://telegram.nomis.cc",
-      Priority: "u=1, i",
       Referer: "https://telegram.nomis.cc/",
       "Sec-Ch-Ua":
         '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
@@ -56,8 +85,8 @@ class Nomis {
   }
 
   async getProfile(id) {
-    const url = `https://cms-tg.nomis.cc/api/ton-twa-users/farm-data?user_id=${id}`;
-    const headers = this.headers();
+    const url = `https://cms-api.nomis.cc/api/users/farm-data?user_id=${id}`;
+    const headers = this.headers(false);
     const config = {
       url,
       method: "get",
@@ -69,6 +98,7 @@ class Nomis {
   async getTask(id) {
     const url = `https://cms-tg.nomis.cc/api/ton-twa-tasks/by-groups?user_id=${id}`;
     const headers = this.headers();
+    logger.info(colors.blue("Checking task list"));
     const config = {
       url,
       method: "get",
@@ -77,7 +107,7 @@ class Nomis {
     return this.request(config);
   }
 
-  async checkTask(id) {
+  async kiemtraTask(id) {
     const url = `https://cms-tg.nomis.cc/api/ton-twa-tasks/by-groups?user_id=${id}&completed=true`;
     const headers = this.headers();
     const config = {
@@ -131,7 +161,7 @@ class Nomis {
   }
 
   async getReferralData(user_id) {
-    const url = `https://cms-tg.nomis.cc/api/ton-twa-users/referrals-data?user_id=${user_id}`;
+    const url = `https://cms-api.nomis.cc/api/users/referrals-data?user_id=${user_id}`;
     const headers = this.headers();
     const config = {
       url,
@@ -154,50 +184,31 @@ class Nomis {
     return this.request(config);
   }
 
-  log(msg, indent = 0) {
-    const indentStr = "  ".repeat(indent);
-    console.log(`${indentStr}${msg}`);
-  }
+  async waitWithCountdown(seconds) {
+    const formatTime = (totalSeconds) => {
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+      return `${hours.toString().padStart(2, "0")}:${minutes
+        .toString()
+        .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+    };
 
-  formatTime(seconds) {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const remainingSeconds = seconds % 60;
-
-    let timeString = "";
-    if (hours > 0) timeString += `${hours}h `;
-    if (minutes > 0 || hours > 0) timeString += `${minutes}m `;
-    timeString += `${remainingSeconds}s`;
-
-    return timeString.trim();
-  }
-
-  async animatedCountdown(seconds) {
-    const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-    let frameIndex = 0;
-    const startTime = Date.now();
-    const endTime = startTime + seconds * 1000;
-
-    while (Date.now() < endTime) {
-      const remainingSeconds = Math.ceil((endTime - Date.now()) / 1000);
-      const formattedTime = this.formatTime(remainingSeconds);
-
+    for (let i = seconds; i >= 0; i--) {
       readline.cursorTo(process.stdout, 0);
-      process.stdout.write(
-        `${frames[frameIndex]} Waiting ${formattedTime} to continue the loop`
-      );
-
-      frameIndex = (frameIndex + 1) % frames.length;
+      readline.clearLine(process.stdout, 0);
+      if (i > 0) {
+        process.stdout.write(
+          colors.cyan(
+            `Completed all accounts, waiting ${formatTime(
+              i
+            )} to continue the loop`
+          )
+        );
+      }
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
-    console.log("\nResuming operations...");
-  }
-
-  formatNumber(num) {
-    return num.toLocaleString("en-US", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
+    console.log(colors.green("\nResuming operations..."));
   }
 
   async main() {
@@ -211,10 +222,6 @@ class Nomis {
     let firstFarmCompleteTime = null;
 
     while (true) {
-      console.log("=".repeat(50));
-      console.log("Starting new iteration".cyan.bold);
-      console.log("=".repeat(50));
-
       for (let no = 0; no < data.length; no++) {
         const appInitData = data[no];
         this.currentAppInitData = appInitData;
@@ -223,13 +230,12 @@ class Nomis {
           /user=%7B%22id%22%3A(\d+).*?%22username%22%3A%22(.*?)%22/
         );
         if (!userMatch) {
-          console.log(`Invalid app init data for entry ${no + 1}`);
+          logger.error(`Invalid app init data for entry ${no + 1}`);
           continue;
         }
 
         const [, telegram_user_id, telegram_username] = userMatch;
-        const referrer = "Lndkhu-VNo"; // refcode
-
+        const referrer = "Lndkhu-VNo";
         try {
           const authResponse = await this.auth(
             telegram_user_id,
@@ -240,10 +246,8 @@ class Nomis {
           if (profileData && profileData.id) {
             const userId = profileData.id;
 
-            console.log(
-              `\n${"►".cyan} Account ${(no + 1).toString().cyan}: ${
-                telegram_username.green
-              }`
+            logger.info(
+              colors.cyan(`Account ${no + 1} | ${telegram_username}`)
             );
 
             const farmDataResponse = await this.getProfile(userId);
@@ -251,18 +255,17 @@ class Nomis {
             const points = farmData.points / 1000;
             const nextfarm = farmData.nextFarmClaimAt;
 
-            this.log(`Balance: ${this.formatNumber(points).yellow}`, 1);
+            logger.info(`Balance: ${colors.yellow(points)}`);
             let claimFarmSuccess = false;
 
             if (nextfarm) {
               const nextFarmLocal = DateTime.fromISO(nextfarm, {
                 zone: "utc",
               }).setZone(DateTime.local().zoneName);
-              this.log(
-                `Next farm: ${
-                  nextFarmLocal.toLocaleString(DateTime.DATETIME_FULL).magenta
-                }`,
-                1
+              logger.info(
+                `Farm completion time: ${colors.magenta(
+                  nextFarmLocal.toLocaleString(DateTime.DATETIME_FULL)
+                )}`
               );
               if (no === 0) {
                 firstFarmCompleteTime = nextFarmLocal;
@@ -271,10 +274,11 @@ class Nomis {
               if (now > nextFarmLocal) {
                 try {
                   await this.claimFarm(userId);
-                  this.log(`Farm claim: ${"SUCCESS".green}`, 1);
+                  logger.info(colors.green("Farm claim successful!"));
                   claimFarmSuccess = true;
                 } catch (claimError) {
-                  this.log(`Farm claim: ${"FAILED".red}`, 1);
+                  logger.error(claimError);
+                  logger.error(colors.red("Error when claiming farm!"));
                 }
               }
             } else {
@@ -284,9 +288,9 @@ class Nomis {
             if (claimFarmSuccess) {
               try {
                 await this.startFarm(userId);
-                this.log(`Farm start: ${"SUCCESS".green}`, 1);
+                logger.info(colors.green("Farm start successful!"));
               } catch (startError) {
-                this.log(`Farm start: ${"FAILED".red}`, 1);
+                logger.error(colors.red("Error when starting farm!"));
               }
             }
 
@@ -294,8 +298,8 @@ class Nomis {
               const getTaskResponse = await this.getTask(userId);
               const tasks = getTaskResponse.data;
 
-              const checkTaskResponse = await this.checkTask(userId);
-              const completedTasks = checkTaskResponse.data.flatMap(
+              const kiemtraTaskResponse = await this.kiemtraTask(userId);
+              const completedTasks = kiemtraTaskResponse.data.flatMap(
                 (taskGroup) => taskGroup.ton_twa_tasks
               );
 
@@ -314,17 +318,17 @@ class Nomis {
                     )
                 );
 
-              if (pendingTasks.length > 0) {
-                this.log("Tasks:", 1);
-                for (const task of pendingTasks) {
-                  const result = await this.claimTask(userId, task.id);
-                  this.log(`• ${task.title}: ${"COMPLETED".green}`, 2);
-                }
-              } else {
-                this.log("Tasks: No pending tasks", 1);
+              for (const task of pendingTasks) {
+                const result = await this.claimTask(userId, task.id);
+                logger.info(
+                  `Doing task ${colors.cyan(
+                    task.title
+                  )} | Status: ${colors.green("Completed")}`
+                );
               }
             } catch (taskError) {
-              this.log(`Tasks: ${"ERROR".red}`, 1);
+              logger.error(colors.red("Error when doing task"));
+              logger.error(taskError);
             }
 
             try {
@@ -336,44 +340,45 @@ class Nomis {
                     referralData.nextReferralsClaimAt,
                     { zone: "utc" }
                   ).setZone(DateTime.local().zoneName);
-                  this.log(
-                    `Next referral claim: ${
+                  logger.info(
+                    `Next referrals claim time: ${colors.magenta(
                       nextReferralsClaimLocal.toLocaleString(
                         DateTime.DATETIME_FULL
-                      ).magenta
-                    }`,
-                    1
+                      )
+                    )}`
                   );
 
                   const now = DateTime.local();
                   if (now > nextReferralsClaimLocal) {
                     const claimResponse = await this.claimReferral(userId);
                     if (claimResponse.data.result) {
-                      this.log(`Referral claim: ${"SUCCESS".green}`, 1);
+                      logger.info(colors.green("Referrals claim successful!"));
                     } else {
-                      this.log(`Referral claim: ${"FAILED".red}`, 1);
+                      logger.error(colors.red("Referrals claim failed!"));
                     }
                   }
                 } else {
-                  this.log(`Referral claim: Attempting...`, 1);
+                  logger.info(colors.yellow("Performing claim"));
                   const claimResponse = await this.claimReferral(userId);
                   if (claimResponse.data.result) {
-                    this.log(`Referral claim: ${"SUCCESS".green}`, 1);
+                    logger.info(colors.green("Referrals claim successful!"));
                   } else {
-                    this.log(`Referral claim: ${"FAILED".red}`, 1);
+                    logger.error(colors.red("Referrals claim failed!"));
                   }
                 }
               } else {
-                this.log(`Referral claim: ${"NOT AVAILABLE".yellow}`, 1);
+                logger.warn(colors.yellow("No available referrals to claim"));
               }
             } catch (error) {
-              this.log(`Referral processing: ${"ERROR".red}`, 1);
+              logger.error(colors.red("Error when processing referrals"));
+              logger.error(error);
             }
           } else {
-            this.log(`${"ERROR".red}: User ID not found`, 1);
+            logger.error(colors.red("Error: User ID not found"));
           }
         } catch (error) {
-          this.log(`${"ERROR".red}: Failed to process account`, 1);
+          logger.error(colors.red("Error when processing account"));
+          logger.error(error);
         }
       }
 
@@ -385,16 +390,15 @@ class Nomis {
       } else {
         waitTime = 15 * 60;
       }
-      console.log("\n" + "=".repeat(50));
-      await this.animatedCountdown(waitTime);
+      await this.waitWithCountdown(waitTime);
     }
   }
 }
 
 if (require.main === module) {
-  const nomis = new Nomis();
-  nomis.main().catch((err) => {
-    console.error(err);
+  const dancay = new Nomis();
+  dancay.main().catch((err) => {
+    logger.error(err);
     process.exit(1);
   });
 }

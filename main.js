@@ -275,7 +275,7 @@ class Nomis {
                 );
 
               for (const task of pendingTasks) {
-                this.log(`Doing task ${task.title} | Completed`);
+                this.log(`${task.title} | Completed`);
               }
             } catch (taskError) {
               this.log(`Error when doing tasks`);

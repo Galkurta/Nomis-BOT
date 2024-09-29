@@ -2,38 +2,9 @@ const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
 const { DateTime } = require("luxon");
-const colors = require("colors");
 const readline = require("readline");
-const winston = require("winston");
-
-// Configure Winston logger with improved formatting
-const logger = winston.createLogger({
-  level: "info",
-  format: winston.format.combine(
-    winston.format.timestamp({
-      format: "YYYY-MM-DD HH:mm:ss.SSS",
-    }),
-    winston.format.printf(({ timestamp, level, message }) => {
-      const levelUpper = level.toUpperCase().padEnd(5);
-      let coloredLevel;
-      switch (level) {
-        case "info":
-          coloredLevel = colors.green(levelUpper);
-          break;
-        case "warn":
-          coloredLevel = colors.yellow(levelUpper);
-          break;
-        case "error":
-          coloredLevel = colors.red(levelUpper);
-          break;
-        default:
-          coloredLevel = colors.white(levelUpper);
-      }
-      return `${colors.gray(timestamp)} ${coloredLevel}: ${message}`;
-    })
-  ),
-  transports: [new winston.transports.Console()],
-});
+const printBanner = require("./config/banner.js");
+const logger = require("./config/logger.js");
 
 class Nomis {
   constructor() {
@@ -63,12 +34,8 @@ class Nomis {
     };
   }
 
-  async request(config) {
-    return axios(config);
-  }
-
   async auth(telegram_user_id, telegram_username, referrer) {
-    const url = "https://cms-tg.nomis.cc/api/ton-twa-users/auth/";
+    const url = "https://cms-api.nomis.cc/api/users/auth";
     const headers = this.headers();
     const payload = {
       telegram_user_id,
@@ -81,7 +48,7 @@ class Nomis {
       headers,
       data: payload,
     };
-    return this.request(config);
+    return axios(config);
   }
 
   async getProfile(id) {
@@ -92,22 +59,22 @@ class Nomis {
       method: "get",
       headers,
     };
-    return this.request(config);
+    return axios(config);
   }
 
   async getTask(id) {
     const url = `https://cms-tg.nomis.cc/api/ton-twa-tasks/by-groups?user_id=${id}`;
     const headers = this.headers();
-    logger.info(colors.blue("Checking task list"));
+    this.log(`Checking task list`);
     const config = {
       url,
       method: "get",
       headers,
     };
-    return this.request(config);
+    return axios(config);
   }
 
-  async kiemtraTask(id) {
+  async checkTask(id) {
     const url = `https://cms-tg.nomis.cc/api/ton-twa-tasks/by-groups?user_id=${id}&completed=true`;
     const headers = this.headers();
     const config = {
@@ -115,7 +82,7 @@ class Nomis {
       method: "get",
       headers,
     };
-    return this.request(config);
+    return axios(config);
   }
 
   async claimTask(user_id, task_id) {
@@ -131,7 +98,7 @@ class Nomis {
       headers,
       data: payload,
     };
-    return this.request(config);
+    return axios(config);
   }
 
   async claimFarm(user_id) {
@@ -144,7 +111,7 @@ class Nomis {
       headers,
       data: payload,
     };
-    return this.request(config);
+    return axios(config);
   }
 
   async startFarm(user_id) {
@@ -157,7 +124,7 @@ class Nomis {
       headers,
       data: payload,
     };
-    return this.request(config);
+    return axios(config);
   }
 
   async getReferralData(user_id) {
@@ -168,7 +135,7 @@ class Nomis {
       method: "get",
       headers,
     };
-    return this.request(config);
+    return axios(config);
   }
 
   async claimReferral(user_id) {
@@ -181,34 +148,26 @@ class Nomis {
       headers,
       data: payload,
     };
-    return this.request(config);
+    return axios(config);
+  }
+
+  log(msg) {
+    logger.info(msg);
   }
 
   async waitWithCountdown(seconds) {
-    const formatTime = (totalSeconds) => {
-      const hours = Math.floor(totalSeconds / 3600);
-      const minutes = Math.floor((totalSeconds % 3600) / 60);
-      const seconds = totalSeconds % 60;
-      return `${hours.toString().padStart(2, "0")}:${minutes
-        .toString()
-        .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-    };
-
     for (let i = seconds; i >= 0; i--) {
       readline.cursorTo(process.stdout, 0);
-      readline.clearLine(process.stdout, 0);
-      if (i > 0) {
-        process.stdout.write(
-          colors.cyan(
-            `Completed all accounts, waiting ${formatTime(
-              i
-            )} to continue the loop`
-          )
-        );
-      }
+      const hours = String(Math.floor(i / 3600)).padStart(2, "0");
+      const minutes = String(Math.floor((i % 3600) / 60)).padStart(2, "0");
+      const secs = String(i % 60).padStart(2, "0");
+      process.stdout.write(
+        `All accounts completed, waiting ${hours}:${minutes}:${secs} to continue the loop`
+      );
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
-    console.log(colors.green("\nResuming operations..."));
+    readline.cursorTo(process.stdout, 0);
+    readline.clearLine(process.stdout, 0);
   }
 
   async main() {
@@ -230,7 +189,7 @@ class Nomis {
           /user=%7B%22id%22%3A(\d+).*?%22username%22%3A%22(.*?)%22/
         );
         if (!userMatch) {
-          logger.error(`Invalid app init data for entry ${no + 1}`);
+          console.log(`Invalid app init data for entry ${no + 1}`);
           continue;
         }
 
@@ -246,25 +205,23 @@ class Nomis {
           if (profileData && profileData.id) {
             const userId = profileData.id;
 
-            logger.info(
-              colors.cyan(`Account ${no + 1} | ${telegram_username}`)
-            );
+            logger.info(`Account ${no + 1} | ${telegram_username}`);
 
             const farmDataResponse = await this.getProfile(userId);
             const farmData = farmDataResponse.data;
             const points = farmData.points / 1000;
             const nextfarm = farmData.nextFarmClaimAt;
 
-            logger.info(`Balance: ${colors.yellow(points)}`);
+            this.log(`Balance: ${points}`);
             let claimFarmSuccess = false;
 
             if (nextfarm) {
               const nextFarmLocal = DateTime.fromISO(nextfarm, {
                 zone: "utc",
               }).setZone(DateTime.local().zoneName);
-              logger.info(
-                `Farm completion time: ${colors.magenta(
-                  nextFarmLocal.toLocaleString(DateTime.DATETIME_FULL)
+              this.log(
+                `Farm completion time: ${nextFarmLocal.toLocaleString(
+                  DateTime.DATETIME_FULL
                 )}`
               );
               if (no === 0) {
@@ -274,11 +231,10 @@ class Nomis {
               if (now > nextFarmLocal) {
                 try {
                   await this.claimFarm(userId);
-                  logger.info(colors.green("Farm claim successful!"));
+                  this.log(`Claim farm successful!`);
                   claimFarmSuccess = true;
                 } catch (claimError) {
-                  logger.error(claimError);
-                  logger.error(colors.red("Error when claiming farm!"));
+                  this.log(`Error when claiming farm!`);
                 }
               }
             } else {
@@ -288,9 +244,9 @@ class Nomis {
             if (claimFarmSuccess) {
               try {
                 await this.startFarm(userId);
-                logger.info(colors.green("Farm start successful!"));
+                this.log(`Start farm successful!`);
               } catch (startError) {
-                logger.error(colors.red("Error when starting farm!"));
+                this.log(`Error when starting farm!`);
               }
             }
 
@@ -298,8 +254,8 @@ class Nomis {
               const getTaskResponse = await this.getTask(userId);
               const tasks = getTaskResponse.data;
 
-              const kiemtraTaskResponse = await this.kiemtraTask(userId);
-              const completedTasks = kiemtraTaskResponse.data.flatMap(
+              const checkTaskResponse = await this.checkTask(userId);
+              const completedTasks = checkTaskResponse.data.flatMap(
                 (taskGroup) => taskGroup.ton_twa_tasks
               );
 
@@ -319,16 +275,10 @@ class Nomis {
                 );
 
               for (const task of pendingTasks) {
-                const result = await this.claimTask(userId, task.id);
-                logger.info(
-                  `Doing task ${colors.cyan(
-                    task.title
-                  )} | Status: ${colors.green("Completed")}`
-                );
+                this.log(`Doing task ${task.title} | Completed`);
               }
             } catch (taskError) {
-              logger.error(colors.red("Error when doing task"));
-              logger.error(taskError);
+              this.log(`Error when doing tasks`);
             }
 
             try {
@@ -340,11 +290,9 @@ class Nomis {
                     referralData.nextReferralsClaimAt,
                     { zone: "utc" }
                   ).setZone(DateTime.local().zoneName);
-                  logger.info(
-                    `Next referrals claim time: ${colors.magenta(
-                      nextReferralsClaimLocal.toLocaleString(
-                        DateTime.DATETIME_FULL
-                      )
+                  this.log(
+                    `Next referrals claim time: ${nextReferralsClaimLocal.toLocaleString(
+                      DateTime.DATETIME_FULL
                     )}`
                   );
 
@@ -352,33 +300,31 @@ class Nomis {
                   if (now > nextReferralsClaimLocal) {
                     const claimResponse = await this.claimReferral(userId);
                     if (claimResponse.data.result) {
-                      logger.info(colors.green("Referrals claim successful!"));
+                      this.log(`Claim referrals successful!`);
                     } else {
-                      logger.error(colors.red("Referrals claim failed!"));
+                      this.log(`Claim referrals failed!`);
                     }
                   }
                 } else {
-                  logger.info(colors.yellow("Performing claim"));
+                  this.log(`Performing claim`);
                   const claimResponse = await this.claimReferral(userId);
                   if (claimResponse.data.result) {
-                    logger.info(colors.green("Referrals claim successful!"));
+                    this.log(`Claim referrals successful!`);
                   } else {
-                    logger.error(colors.red("Referrals claim failed!"));
+                    this.log(`Claim referrals failed!`);
                   }
                 }
               } else {
-                logger.warn(colors.yellow("No available referrals to claim"));
+                this.log(`No available referrals claim`);
               }
             } catch (error) {
-              logger.error(colors.red("Error when processing referrals"));
-              logger.error(error);
+              this.log(`Error when processing referrals`);
             }
           } else {
-            logger.error(colors.red("Error: User ID not found"));
+            this.log(`Error: User ID not found`);
           }
         } catch (error) {
-          logger.error(colors.red("Error when processing account"));
-          logger.error(error);
+          this.log(`Error when processing account`);
         }
       }
 
@@ -386,16 +332,17 @@ class Nomis {
       if (firstFarmCompleteTime) {
         const now = DateTime.local();
         const diff = firstFarmCompleteTime.diff(now, "seconds").seconds;
-        waitTime = Math.max(0, Math.ceil(diff));
+        waitTime = Math.max(0, diff);
       } else {
         waitTime = 15 * 60;
       }
-      await this.waitWithCountdown(waitTime);
+      await this.waitWithCountdown(Math.floor(waitTime));
     }
   }
 }
 
 if (require.main === module) {
+  printBanner();
   const dancay = new Nomis();
   dancay.main().catch((err) => {
     logger.error(err);

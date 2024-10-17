@@ -63,7 +63,7 @@ class Nomis {
   }
 
   async getTask(id) {
-    const url = `https://cms-tg.nomis.cc/api/ton-twa-tasks/by-groups?user_id=${id}`;
+    const url = `https://cms-api.nomis.cc/api/users/tasks?user_id=${id}`;
     const headers = this.headers();
     this.log(`Checking task list`);
     const config = {
@@ -75,7 +75,7 @@ class Nomis {
   }
 
   async checkTask(id) {
-    const url = `https://cms-tg.nomis.cc/api/ton-twa-tasks/by-groups?user_id=${id}&completed=true`;
+    const url = `https://cms-api.nomis.cc/api/users/tasks?user_id=${id}&completed=true`;
     const headers = this.headers();
     const config = {
       url,
@@ -102,7 +102,7 @@ class Nomis {
   }
 
   async claimFarm(user_id) {
-    const url = `https://cms-tg.nomis.cc/api/ton-twa-users/claim-farm`;
+    const url = `https://cms-api.nomis.cc/api/users/claim-farm`;
     const headers = this.headers();
     const payload = { user_id };
     const config = {
@@ -115,7 +115,7 @@ class Nomis {
   }
 
   async startFarm(user_id) {
-    const url = `https://cms-tg.nomis.cc/api/ton-twa-users/start-farm`;
+    const url = `https://cms-api.nomis.cc/api/users/start-farm`;
     const headers = this.headers();
     const payload = { user_id };
     const config = {
@@ -139,7 +139,7 @@ class Nomis {
   }
 
   async claimReferral(user_id) {
-    const url = `https://cms-tg.nomis.cc/api/ton-twa-users/claim-referral`;
+    const url = `https://cms-api.nomis.cc/api/users/claim-referrals`;
     const headers = this.headers();
     const payload = { user_id };
     const config = {
